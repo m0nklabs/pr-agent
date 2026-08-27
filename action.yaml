@@ -14,7 +14,12 @@ inputs:
     default: ''
 runs:
   using: 'docker'
-  image: 'Dockerfile.github_action_dockerhub'
+  # PR-PIET-PATCH: from-source build. Upstream default is
+  # Dockerfile.github_action_dockerhub, which only does
+  # "FROM pragent/pr-agent:github_action" (prebuilt upstream image from
+  # Docker Hub) — fork source changes would never reach the container.
+  # This from-source Dockerfile ADDs our patched pr_agent/ into the image.
+  image: 'Dockerfile.github_action'
   env:
     ARTIFACT_PATH: ${{ inputs.artifact_path }}
     ARTIFACT_INSTRUCTIONS: ${{ inputs.artifact_instructions }}

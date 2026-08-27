@@ -14,7 +14,15 @@ aparte `/improve`-call.
      system-prompt en het `duplicate_prompt_examples`-blok.
 2. `pr_agent/tools/pr_reviewer.py`
    - `self.vars` krijgt `'require_suggested_fix':
-     get_settings().pr_reviewer.get('require_suggested_fix', False)`.
+     get_settings().pr_reviewer.get('require_suggested_fix', False)`
+     (string-safe gecoerceerd, zoals `is_true()`).
+3. `action.yaml`
+   - `image: 'Dockerfile.github_action'` (from-source build) i.p.v.
+     `Dockerfile.github_action_dockerhub` (**CRUCIAAL**: de dockerhub-variant
+     is alleen `FROM pragent/pr-agent:github_action` — een prebuilt upstream
+     image van Docker Hub. Zonder deze wijziging komt de fork-broncode nóóit
+     in de container en heeft patch 1+2 geen effect; de settings zien de env-
+     var wél, maar het draaiende pr-agent-pakket kent het veld niet.)
 
 ## Gedrag
 
