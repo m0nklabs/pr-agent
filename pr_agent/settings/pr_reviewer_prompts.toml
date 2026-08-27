@@ -102,6 +102,9 @@ class KeyIssuesComponentLink(BaseModel):
     issue_content: str = Field(description="A short and concise description of the issue, why it matters, and the specific scenario or input that triggers it. Do not mention line numbers in this field.")
     start_line: int = Field(description="The start line that corresponds to this issue in the relevant file")
     end_line: int = Field(description="The end line that corresponds to this issue in the relevant file")
+{%- if require_suggested_fix %}
+    suggested_fix: str = Field(description="The exact, complete replacement code for lines start_line through end_line in the new file version, preserving the file's original indentation. The fix must be self-contained and safe to apply as-is. If no exact and safe fix can be given, use an empty string.")
+{%- endif %}
 
 {%- if require_todo_scan %}
 class TodoSection(BaseModel):
@@ -197,6 +200,10 @@ review:
         ...
       start_line: 12
       end_line: 14
+{%- if require_suggested_fix %}
+      suggested_fix: |
+        ...exact new code for lines 12-14...
+{%- endif %}
     - ...
   security_concerns: |
     No
@@ -335,6 +342,10 @@ review:
         ...
       start_line: ...
       end_line: ...
+{%- if require_suggested_fix %}
+      suggested_fix: |
+        ...
+{%- endif %}
     - ...
   security_concerns: |
     No
