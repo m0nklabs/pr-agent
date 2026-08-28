@@ -12,6 +12,21 @@ aparte `/improve`-call.
    - `KeyIssuesComponentLink` krijgt een conditioneel veld `suggested_fix`
      (Jinja `{%- if require_suggested_fix %}`), incl. voorbeelden in de
      system-prompt en het `duplicate_prompt_examples`-blok.
+   - **Copilot-stijl (commit `1181155`, 2026-08-28):** de beschrijving van
+     `suggested_fix` laat het model niet meer "empty string" gebruiken bij
+     onzekerheid. In plaats daarvan: ALWAYS een concrete best-effort fix geven,
+     óók voor een mogelijke/onzekere bevinding, en de bevinding markeren met een
+     duidelijke onzekerheids-marker in `issue_content` (`UNCERTAIN: ...` /
+     `not verified`). Empty alleen als er écht geen code-change de bevinding
+     adresseert. Aanleiding: PR #8 (guardian-llmprovider-gateway) produceerde
+     een key-issue met een lege `suggested_fix` (geen Apply-knop) omdat het
+     model de "use empty string"-uitweg koos bij een onzekere bevinding.
+   - E2E-bewijs (m0nklabs/pr-piet-test, probes met de fork): een bevinding
+     krijgt nu wél een gevulde `suggested_fix` → ` ```suggestion ``` `-fence met
+     Apply-knop. **Bekende beperking:** deepseek-v4-flash-0731 zet de
+     `UNCERTAIN:`-markering niet consequent in de output (het model benoemt
+     twijfel intern in de reasoning, maar drukt het zelden in `issue_content`);
+     de best-effort-fix-kant werkt, de onzekerheids-vlag niet betrouwbaar.
 2. `pr_agent/tools/pr_reviewer.py`
    - `self.vars` krijgt `'require_suggested_fix':
      get_settings().pr_reviewer.get('require_suggested_fix', False)`
