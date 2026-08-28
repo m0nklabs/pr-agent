@@ -103,7 +103,7 @@ class KeyIssuesComponentLink(BaseModel):
     start_line: int = Field(description="The start line that corresponds to this issue in the relevant file")
     end_line: int = Field(description="The end line that corresponds to this issue in the relevant file")
 {%- if require_suggested_fix %}
-    suggested_fix: str = Field(description="The exact, complete replacement code for lines start_line through end_line in the new file version, preserving the file's original indentation. The fix must be self-contained and safe to apply as-is. If no exact and safe fix can be given, use an empty string.")
+    suggested_fix: str = Field(description="The exact, complete replacement code for lines start_line through end_line in the new file version, preserving the file's original indentation and being self-contained and safe to apply as-is. ALWAYS provide a concrete best-effort fix, even for a possible/uncertain issue (like Copilot, which marks the finding uncertain instead of omitting the suggestion). If your confidence is low, still give the fix AND start issue_content with a clear uncertainty marker, e.g. 'UNCERTAIN: ...' or 'Possible issue (not verified): ...'. Leave suggested_fix empty ONLY if there is genuinely no code change that addresses the finding.")
 {%- endif %}
 
 {%- if require_todo_scan %}
@@ -203,6 +203,16 @@ review:
 {%- if require_suggested_fix %}
       suggested_fix: |
         ...exact new code for lines 12-14...
+    - relevant_file: |
+        directory/yyy.py
+      issue_header: |
+        Possible Issue (Not Verified)
+      issue_content: |
+        UNCERTAIN: short description and why it may matter...
+      start_line: 20
+      end_line: 22
+      suggested_fix: |
+        ...best-effort new code; finding explicitly marked uncertain...
 {%- endif %}
     - ...
   security_concerns: |
