@@ -866,6 +866,28 @@ class LiteLLMAIHandler(BaseAiHandler):
                         existing = _as_int(kwargs.get("max_tokens", 0))
                         kwargs["max_tokens"] = min(existing, max_tokens) if existing > 0 else max_tokens
 
+                # OpenAI-compatible custom endpoints (e.g. a self-hosted
+                # OpenAI-compat gateway fronting reasoning models): opt-in
+                # reasoning budget via config.reasoning_max_tokens. Without
+                # it the provider applies its own default reasoning effort
+                # (for some models 'max', mandatory) which can consume the
+                # whole output budget and return empty content, or burn
+                # 25-30k reasoning tokens on large diffs. The gateway passes
+                # extra_body.reasoning through to the upstream unchanged.
+                # Inert unless config.reasoning_max_tokens > 0.
+                if isinstance(model, str) and model.startswith("openai/"):
+                    try:
+                        _reasoning_max_tokens = int(get_settings().config.get("reasoning_max_tokens", 0))
+                    except (TypeError, ValueError):
+                        _reasoning_max_tokens = 0
+                    if _reasoning_max_tokens > 0:
+                        _extra_body = kwargs.get("extra_body") or {}
+                        _extra_body.setdefault("reasoning", {})["max_tokens"] = _reasoning_max_tokens
+                        kwargs["extra_body"] = _extra_body
+                        get_logger().info(
+                            f"Applying reasoning budget for {model}: reasoning.max_tokens={_reasoning_max_tokens}"
+                        )
+
                 get_logger().debug("Prompts", artifact={"system": system, "user": user})
 
                 if get_settings().config.verbosity_level >= 2:
