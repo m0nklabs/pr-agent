@@ -9,7 +9,7 @@ To print all the available configurations as a comment on your PR, you can use t
 /config
 ```
 
-![possible_config1](https://codium.ai/images/pr_agent/possible_config1.png){width=512}
+![possible_config1](../assets/possible_config1.png){width=512}
 
 To view the **actual** configurations used for a specific tool, after all the user settings are applied, you can add for each tool a `--config.output_relevant_configurations=true` suffix.
 For example:
@@ -20,7 +20,7 @@ For example:
 
 Will output an additional field showing the actual configurations used for the `improve` tool.
 
-![possible_config2](https://codium.ai/images/pr_agent/possible_config2.png){width=512}
+![possible_config2](../assets/possible_config2.png){width=512}
 
 ### Showing the agent run details
 
@@ -30,17 +30,32 @@ To see which model actually answered, how many tokens the run consumed, and how 
 /review --config.output_run_details=true
 ```
 
+API-cost collection is a separate, default-off option controlled by `config.output_run_cost`. Enable both flags to collect it and add it inside the run-details section:
+
+```
+/review --config.output_run_details=true --config.output_run_cost=true
+```
+
+`config.output_run_details` remains the public-output gate: setting only `config.output_run_cost=true` collects run-level cost data but never adds it to a PR comment.
+
 On providers that support GitHub-Flavored Markdown this appends a collapsible section to the generated comment; elsewhere `/review` and `/describe` append the same information as plain text:
 
 ```
 ⚙️ Agent run details
-- Model: gpt-5.6-terra (fallback)
+- Model: provider/fallback-model (fallback)
 - Tokens: 12,340 in / 1,205 out / 13,545 total
 - Time cost: 8.2s
 - AI calls: 1
+- Estimated API cost: $0.08 USD
+  - anthropic/claude-opus-5: $0.07 USD
+  - anthropic/claude-sonnet-5: $0.01 USD
 ```
 
 `Model` shows the model that produced the answer, marked `(fallback)` when the primary model failed and a fallback took over. The `Tokens` line appears only when the model provider reports usage. `AI calls` counts the successful LLM invocations made during the run. The flag is disabled by default.
+
+`Estimated API cost` is derived synchronously from each completed LiteLLM response and its finalized usage. LiteLLM can account for cache reads, cache writes, reasoning tokens, and provider-specific usage categories when the response and its pricing data include them. Multi-model runs show a compact breakdown of the known costs. Exact `Decimal` values are retained for aggregation, while public currency output is rounded to two decimal places; a tiny positive value that would round to zero is shown as `<$0.01` instead of `$0.00`. If only some successful calls can be priced, the total is marked `partial` with the priced-call count; if none can be priced, the line reports `unavailable`. Missing pricing is never rendered as `$0`.
+
+The amount is an estimate based on LiteLLM's pricing data, not provider-invoice-authoritative billing. Reconcile it with the provider's billing records before using it for accounting or chargeback. Streaming responses are priced only after finalized usage is available; asynchronous callbacks and transient `response_cost` callback metadata are not treated as the sole source of truth. The public section contains only aggregate costs and configured model names, never prompts, response bodies, API keys, or provider request IDs.
 
 Notes:
 
@@ -134,6 +149,8 @@ expand_submodule_diffs = true
 
 When enabled, PR-Agent will fetch and attach diffs from the submodule repositories. The default is `false` to avoid extra GitLab API calls.
 
+Submodule URLs in `.gitmodules` may be absolute (`https://`, `ssh://`, `git@host:`) or relative (`../group/repo.git`). Relative URLs are resolved against the merge request's project path the same way git does, so submodules that live in a sibling group on the same GitLab instance are expanded too.
+
 ## Post the review as a GitLab thread
 
 By default, PR-Agent posts the `/review` summary as a plain note. To post it as a resolvable thread (GitLab discussion) instead, enable (default: `false`):
@@ -145,6 +162,17 @@ publish_review_as_thread = true
 - With `pr_reviewer.persistent_comment=true` (the default), each run updates the existing review thread and reopens it if it was resolved, so the refreshed review gets another look.
 - Enabling the flag does not convert a review that was already posted as a plain note: it keeps being updated in place, and GitLab cannot promote a note to a thread. Only MRs whose first review runs after the flag is set get a thread.
 - Set `pr_reviewer.persistent_comment=false` to open a new review thread on each run instead.
+
+## Post the /improve suggestions as a GitLab thread
+
+By default, PR-Agent posts the `/improve` suggestions as a plain note. To post them as a resolvable thread (GitLab discussion) instead, enable (default: `false`):
+
+```toml
+[gitlab]
+publish_improve_as_thread = true
+```
+
+- A run that finds no suggestions edits the thread in place and resolves it, so a status message does not leave an open thread behind.
 
 ## Resolve outdated GitLab inline threads
 
@@ -221,6 +249,52 @@ LANGSMITH_PROJECT=<project>
 LANGSMITH_BASE_URL=<url>
 ```
 
+To use [Langfuse](https://langfuse.com) for utilization and adoption tracking (LLM cost, token usage, latency, and unique repo adoption), add the following to your configuration:
+
+```toml
+[litellm]
+enable_callbacks = true
+success_callback = ["langfuse_otel"]
+failure_callback = ["langfuse_otel"]
+```
+
+> Note: use `langfuse_otel` (the OpenTelemetry-based integration), not the legacy `langfuse` callback — the legacy callback is incompatible with the Langfuse 3.x SDK this project pins.
+
+Then set the following environment variables:
+
+```
+LANGFUSE_HOST=https://cloud.langfuse.com
+LANGFUSE_PUBLIC_KEY=<public_key>
+LANGFUSE_SECRET_KEY=<secret_key>
+```
+
+Each LLM call is traced with the command name, git provider, PR URL, model, token counts, and version as tags — giving you full visibility into how pr-agent is being used across your repositories.
+
+### LLM telemetry via LiteLLM's OpenTelemetry integration
+
+To emit OpenTelemetry traces and metrics for the LLM calls themselves — cost in USD, call duration, time to first token, and the input/output token split, on standard `gen_ai.*` semantic-convention names — enable LiteLLM's built-in `otel` callback:
+
+```toml
+[litellm]
+success_callback = ["otel"]
+failure_callback = ["otel"]
+turn_off_message_logging = true
+```
+
+> **Set `turn_off_message_logging = true`.** LiteLLM attaches full prompt and response content to what its callbacks emit, which here means the entire PR diff. The default is `false` to preserve existing behavior for Langfuse and LangSmith users.
+
+The integration is configured through environment variables:
+
+```
+OTEL_EXPORTER=otlp_http            # or "console", "otlp_grpc"
+OTEL_EXPORTER_OTLP_ENDPOINT=https://collector:4318
+OTEL_EXPORTER_OTLP_HEADERS=...
+OTEL_SERVICE_NAME=pr-agent
+LITELLM_OTEL_INTEGRATION_ENABLE_METRICS=true   # metrics are off by default
+```
+
+Pending callbacks are flushed before the CLI and the GitHub Action runner exit, bounded by `callback_timeout_seconds` (see [Custom callbacks](#custom-callbacks)).
+
 ### Custom callbacks
 
 If you embed PR-Agent in your own code, you can also register callbacks programmatically — for example a
@@ -247,6 +321,85 @@ that flush may take:
 [litellm]
 callback_timeout_seconds = 30 # default
 ```
+
+## Built-in OpenTelemetry command telemetry
+
+PR-Agent can emit its own [OpenTelemetry](https://opentelemetry.io/) signals for utilization and adoption tracking. These cover the **command** layer — how often each tool runs, on which git provider, and whether it succeeded — which no LLM-level integration can report, because many failures happen before any model call:
+
+- **Traces**: one span per request, named `pr_agent <command>` (for example `pr_agent review`), carrying `pr_agent.command`, `pr_agent.args_count`, `vcs.provider.name`, a span status, and a bounded `error.type` on failure. Prompt and response content is never attached.
+- **Metrics**: `pr_agent.commands`, a counter of executed commands labeled by command and git provider.
+
+### Two independent layers
+
+Command telemetry (this section) and [LLM telemetry](#llm-telemetry-via-litellms-opentelemetry-integration) are separate toggles with separate configuration, so you can enable either alone and aggregate them independently. When both are on, the LLM spans are children of the command span in the same trace, so a single command's model calls stay attributable to it.
+
+Telemetry is disabled by default. To enable it, set in `configuration.toml`:
+
+```toml
+[otel]
+is_enabled = true
+exporter_type = "console" # "console", "otlp", "prometheus", or "none"
+service_name = "pr-agent"
+environment = "development" # e.g. "development", "staging", "production"
+```
+
+To export to an OpenTelemetry collector instead of the console, set `exporter_type = "otlp"` and configure the endpoint and any authentication headers in `.secrets.toml` (they are secrets — keep them out of `configuration.toml`):
+
+```toml
+[otel]
+otlp_endpoint = "http://my-collector:4318"
+otlp_headers = "x-honeycomb-team=YOUR_API_KEY" # optional, "key1=value1,key2=value2"
+```
+
+Export uses OTLP over HTTP by default; `otlp_endpoint` is the base URL, and the `/v1/traces` and `/v1/metrics` paths are appended automatically. To use OTLP over gRPC instead, install the optional exporter and select the protocol — the endpoint is then used as-is (gRPC collectors typically listen on port 4317):
+
+```bash
+pip install pr-agent[otel-grpc]
+```
+
+```toml
+[otel]
+otlp_protocol = "grpc" # default: "http"
+```
+
+This is the recommended topology for fleets: point every PR-Agent instance at the same collector and aggregate there. Each process creates its own exporter connection; use the `service_name` and `environment` resource attributes to slice instances apart on the backend.
+
+### Exposing native Prometheus metrics
+
+Instead of pushing to a collector, set `exporter_type = "prometheus"` to expose a native `GET /metrics` scrape endpoint on the gunicorn-served apps (`github_app`, `gitlab_webhook`, `azuredevops_server_webhook`, `gitea_app`). The command counter is translated into the Prometheus text format, and every gunicorn worker's values are merged at scrape time, so counters stay correct across the process workers:
+
+```toml
+[otel]
+exporter_type = "prometheus"
+prometheus_multiproc_dir = "/tmp/pr-agent-prometheus" # shared, writable by every worker
+```
+
+1. The exporter is metrics-only: command spans are not exported in this mode.
+2. `/metrics` is mounted only when this exporter is selected, so nothing is exposed by default. It does not depend on an OTLP collector or endpoint.
+3. gunicorn registers and deregisters workers' state files automatically (`when_ready`/`child_exit`); a worker that dies mid-scrape leaves only a stale file, which is ignored once it is marked dead.
+4. Metric families are created from the first data point's label set. Later attributes that do not fit the family are dropped, and missing ones are back-filled with an empty string, so a scrape never breaks on drifting label cardinality.
+5. The exporter ships with PR-Agent (it depends on `prometheus-client`); no extra package is required. Scrape it like any exporter:
+
+```yaml
+scrape_configs:
+  - job_name: pr-agent
+    static_configs:
+      - targets: ["pr-agent:3000"]
+```
+
+Privacy controls (both off by default):
+
+- `include_pr_url = true` attaches PR URLs to spans. Off by default because URLs expose private repo names.
+- `include_error_details = true` attaches exception messages and rejected-command text to error spans. Off by default because that content can embed PR URLs, repo names, or other request-specific text. Bounded values (the exception class name and error category) are always attached.
+
+Notes:
+
+- Telemetry configuration is **process-level**: it is read once at startup from the global configuration or environment, and cannot be enabled or reconfigured per-repo via `.pr_agent.toml`. In a multi-tenant server, telemetry is a shared process resource — configure it where the process is deployed.
+- PR-Agent keeps its own OpenTelemetry providers and never registers the process-global one, so embedding PR-Agent in an application that already uses OpenTelemetry will not interfere with the host's telemetry. Pending spans and metrics are flushed automatically on process exit.
+- Each OTLP export call is bounded by `otlp_timeout` (default 3 seconds, retries included), so an unreachable collector cannot hang CLI exit or request completion. Raise it for slow collectors at the cost of longer worst-case stalls.
+- If `exporter_type = "otlp"` is set but no endpoint is configured, telemetry is disabled entirely (fail closed) — it never falls back to another exporter, so a missing secret cannot redirect telemetry into process logs.
+- With `exporter_type = "prometheus"`, `prometheus_multiproc_dir` must be a shared directory writable by every worker; it defaults to `/tmp/pr-agent-prometheus`. In non-gunicorn (single-process) deployments the exporter works without it and simply serves the process's own registry.
+- **Serverless deployments** (e.g. the AWS Lambda webhooks) are supported: buffered spans and metrics are force-flushed at the end of every handled request, because frozen execution environments stop background export threads and are reaped without running exit handlers. No extra configuration is needed.
 
 ## Bringing per-repo context files to PR-Agent
 
@@ -284,6 +437,41 @@ To bound how much of this context is sent to the model, `repo_context_max_lines`
 [config]
 repo_context_max_lines = 500
 ```
+
+### Context from sibling repositories
+
+The host operator must first approve repositories in the deployment configuration:
+
+```toml
+[config]
+repo_context_sibling_repos = ["my-group/library"]
+repo_context_max_sibling_files = 5
+```
+
+Approve only repositories whose contents may appear in reviews of consuming repositories.
+This allowlist and the fetch limit cannot be changed by repository settings or comment arguments.
+An empty allowlist disables sibling reads.
+
+A consuming repository can then select files in its `.pr_agent.toml` as structured
+`repo_context_files` entries:
+
+```toml
+[config]
+repo_context_files = [
+    "AGENTS.md",
+    {repo_id = "my-group/library", file_path = "src/api.py"},
+]
+```
+
+Use `owner/repository` on GitHub or a full project path on GitLab. GitLab also accepts numeric
+project IDs as strings, provided the same identifier is in the host allowlist. Resolved repositories
+must share the current repository's owning namespace: the GitHub owner or GitLab top-level group,
+including projects in different subgroups. Renamed or redirected paths must be updated to their
+canonical names in both settings.
+
+Sibling files always come from their default branch and share `repo_context_max_lines` with local
+files. Private and internal repositories also require requester access. Comment arguments cannot
+override `repo_context_files` at all; a repository's `.pr_agent.toml` may still set it.
 
 ## Ignoring automatic commands in PRs
 
@@ -389,19 +577,6 @@ ignore_language_framework = ['protobuf', ...]
 
 You can view the list of auto-generated file patterns in [`generated_code_ignore.toml`](https://github.com/the-pr-agent/pr-agent/blob/main/pr_agent/settings/generated_code_ignore.toml).
 Files matching these glob patterns will be automatically excluded from PR Agent analysis.
-
-### Ignoring Tickets with Specific Labels
-
-When PR-Agent analyzes tickets (JIRA, GitHub Issues, GitLab Issues, etc.) referenced in your PR, you may want to exclude tickets that have certain labels from the analysis. This is useful for filtering out tickets marked as "ignore-compliance", "skip-review", or other labels that indicate the ticket should not be considered during PR review.
-
-To ignore tickets with specific labels, add the following to your `configuration.toml` file:
-
-```toml
-[config]
-ignore_ticket_labels = ["ignore-compliance", "skip-review", "wont-fix"]
-```
-
-Where `ignore_ticket_labels` is a list of label names that should be ignored during ticket analysis.
 
 ### Restricted Mode
 

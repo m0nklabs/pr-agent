@@ -10,10 +10,9 @@ Streaming is advertised as False, which is load-bearing: the reference agent sel
 message/send vs message/stream from capabilities.streaming."""
 import os
 
-from a2a.types import (AgentCapabilities, AgentCard, AgentExtension,
-                       AgentInterface, AgentSkill)
+from a2a.types import AgentCapabilities, AgentCard, AgentExtension, AgentInterface, AgentSkill
 
-from pr_agent.algo.utils import get_version
+from pr_agent.algo.run_output import get_version
 
 OBSERVABILITY_EXTENSION_URI = "https://mosaico-project.eu/extensions/mosaico-observability"
 

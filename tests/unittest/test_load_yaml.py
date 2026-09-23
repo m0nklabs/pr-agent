@@ -17,25 +17,51 @@ class TestLoadYaml:
         assert load_yaml(yaml_str) == expected_output
 
     def test_load_invalid_yaml1(self):
-        yaml_str = \
-'''\
-PR Analysis:
-  Main theme: Enhancing the `/describe` command prompt by adding title and description
-  Type of PR: Enhancement
-  Relevant tests: No
-  Focused PR: Yes, the PR is focused on enhancing the `/describe` command prompt.
-
-PR Feedback:
-  General suggestions: The PR seems to be well-structured and focused on a specific enhancement. However, it would be beneficial to add tests to ensure the new feature works as expected.
-  Code feedback:
-    - relevant file: pr_agent/settings/pr_description_prompts.toml
-      suggestion: Consider using a more descriptive variable name than 'user' for the command prompt. A more descriptive name would make the code more readable and maintainable. [medium]
-      relevant line: user="""PR Info: aaa
-  Security concerns: No'''
+        yaml_str = (
+            "PR Analysis:\n"
+            "  Main theme: Enhancing the `/describe` command prompt by adding title and description\n"
+            "  Type of PR: Enhancement\n"
+            "  Relevant tests: No\n"
+            "  Focused PR: Yes, the PR is focused on enhancing the `/describe` command prompt.\n"
+            "\n"
+            "PR Feedback:\n"
+            "  General suggestions: The PR seems to be well-structured and focused on a specific "
+            "enhancement. However, it would be beneficial to add tests to ensure the new feature "
+            "works as expected.\n"
+            "  Code feedback:\n"
+            "    - relevant file: pr_agent/settings/pr_description_prompts.toml\n"
+            "      suggestion: Consider using a more descriptive variable name than 'user' for the "
+            "command prompt. A more descriptive name would make the code more readable and "
+            "maintainable. [medium]\n"
+            '      relevant line: user="""PR Info: aaa\n'
+            "  Security concerns: No"
+        )
         with pytest.raises(ScannerError):
             yaml.safe_load(yaml_str)
 
-        expected_output = {'PR Analysis': {'Main theme': 'Enhancing the `/describe` command prompt by adding title and description', 'Type of PR': 'Enhancement', 'Relevant tests': False, 'Focused PR': 'Yes, the PR is focused on enhancing the `/describe` command prompt.'}, 'PR Feedback': {'General suggestions': 'The PR seems to be well-structured and focused on a specific enhancement. However, it would be beneficial to add tests to ensure the new feature works as expected.', 'Code feedback': [{'relevant file': 'pr_agent/settings/pr_description_prompts.toml\n', 'suggestion': "Consider using a more descriptive variable name than 'user' for the command prompt. A more descriptive name would make the code more readable and maintainable. [medium]", 'relevant line': 'user="""PR Info: aaa\n'}], 'Security concerns': False}}
+        expected_output = {
+            "PR Analysis": {
+                "Main theme": "Enhancing the `/describe` command prompt by adding title and description",
+                "Type of PR": "Enhancement",
+                "Relevant tests": False,
+                "Focused PR": "Yes, the PR is focused on enhancing the `/describe` command prompt.",
+            },
+            "PR Feedback": {
+                "General suggestions": (
+                    "The PR seems to be well-structured and focused on a specific enhancement. "
+                    "However, it would be beneficial to add tests to ensure the new feature works as expected."
+                ),
+                "Code feedback": [{
+                    "relevant file": "pr_agent/settings/pr_description_prompts.toml\n",
+                    "suggestion": (
+                        "Consider using a more descriptive variable name than 'user' for the command prompt. "
+                        "A more descriptive name would make the code more readable and maintainable. [medium]"
+                    ),
+                    "relevant line": 'user="""PR Info: aaa\n',
+                }],
+                "Security concerns": False,
+            },
+        }
         assert load_yaml(yaml_str) == expected_output
 
     def test_load_invalid_yaml2(self):
@@ -46,7 +72,10 @@ PR Feedback:
         with pytest.raises(ScannerError):
             yaml.safe_load(yaml_str)
 
-        expected_output = [{'relevant file': 'src/app.py:\n', 'suggestion content': 'The print statement is outside inside the if __name__ ==:'}]
+        expected_output = [{
+            "relevant file": "src/app.py:\n",
+            "suggestion content": "The print statement is outside inside the if __name__ ==:",
+        }]
         assert load_yaml(yaml_str) == expected_output
 
     def test_load_yaml_with_illegal_control_character(self):
@@ -85,7 +114,7 @@ PR Feedback:
         sink_id = get_logger().add(lambda msg: captured.append(msg), level="WARNING")
         try:
             result = load_yaml('\x08\x08\x08')
-            assert result is None
+            assert result == {}
             assert any("Initial failure to parse AI prediction" in m for m in captured)
         finally:
             get_logger().remove(sink_id)
@@ -97,7 +126,7 @@ PR Feedback:
         sink_id = get_logger().add(lambda msg: captured.append(msg), level="WARNING")
         try:
             result = load_yaml('')
-            assert result is None
+            assert result == {}
             assert not any("Preprocessing/sanitization removed all content" in m for m in captured)
         finally:
             get_logger().remove(sink_id)
@@ -112,14 +141,18 @@ PR Feedback:
         assert load_yaml("``` yaml\nname: John\n```") == expected
         assert load_yaml("``` yml\nname: John\n```") == expected
 
+    @pytest.mark.parametrize("label", ["YAML", "YML", "Yaml", "yMl"])
+    def test_yaml_info_string_is_case_insensitive(self, label):
+        assert load_yaml(f"```\t{label}\t\nname: John\n```") == {"name": "John"}
+
     # A fence labeled with a non-YAML info string (e.g. ```text or ```python)
     # must not be extracted and parsed as a YAML snippet. The old pattern's
     # optional (yaml|yml) group let any info string through, so the body
     # started with the stray label and a plain-scalar body came back as a
     # folded string instead of None.
     def test_non_yaml_info_string_not_parsed_as_yaml_snippet(self):
-        assert load_yaml("```text\nhello world\n```") is None
-        assert load_yaml("```python\nname: John\n```") is None
+        assert load_yaml("```text\nhello world\n```") == {}
+        assert load_yaml("```python\nname: John\n```") == {}
 
     # A fenced block that only becomes reachable through the snippet fallback
     # (the initial parse fails because of surrounding text) must be extracted
