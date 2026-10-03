@@ -63,6 +63,21 @@ aparte `/improve`-call.
      bestaat geen upstream-native equivalent, dus dit blok blijft nodig.
      PR-Piet zet `config.reasoning_max_tokens=32000` (workflow-env).
 
+5. `pr_agent/agent/pr_agent.py` — **`/review2`-alias (2026-10-03)**
+   - `command2class["review2"] = PRReviewer`: pr-piet's tier-2 job draait
+     dezelfde action met `config.model = model_tier2`, dus de alias hoeft
+     alleen de review-tool te kiezen. Zonder de alias logt de container
+     `Unknown command: review2` en wordt de job rood.
+   - **Waarom geen workflow-side oplossing:** een host-step die
+     `GITHUB_EVENT_PATH`'s `comment.body` naar `/review` herschrijft werkt
+     niet — actions/runner (v2.337.0) hermaterialiseert het event-bestand
+     vóór ÉLKE action-step uit het interne context-geheugen
+     (`ExecutionContext.WriteWebhookPayload`, `ActionRunner.cs:141`). Bewezen
+     in de E2E van pr-piet-test PR #19: host-log `comment.body → /review`,
+     container-log `Unknown command: review2`.
+   - Aanleiding: operator-besluit 2026-10-03 — tier 2 draait niet meer
+     automatisch, maar moet op verzoek kunnen (`/review2`).
+
 ## Gedrag
 
 - **Default (`pr_reviewer.require_suggested_fix = false`, upstream-default):

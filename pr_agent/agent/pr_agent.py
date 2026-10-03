@@ -38,6 +38,14 @@ command2class = {
     "answer": PRReviewer,
     "review": PRReviewer,
     "review_pr": PRReviewer,
+    # PR-Piet patch (2026-10-03): /review2 = handmatige second opinion. De
+    # aanroeper (pr-piet reusable workflow, tier-2 job) zet config.model op
+    # het tier-2-model, dus de alias hoeft alleen de review-tool te kiezen.
+    # Zonder deze regel logt pr-agent "Unknown command: review2"; een
+    # host-side herschrijving van de event-payload werkt NIET, want
+    # actions/runner hermaterialiseert event.json vóór élke action-step
+    # (ExecutionContext.WriteWebhookPayload, ActionRunner.cs).
+    "review2": PRReviewer,
     "describe": PRDescription,
     "describe_pr": PRDescription,
     "improve": PRCodeSuggestions,
