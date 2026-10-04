@@ -63,6 +63,17 @@ def _next_page_url(headers: dict) -> str:
     return ""
 
 
+
+class _ReviewAnchor:
+    """Minimale vervanger voor een issue-comment in het incremental-pad."""
+
+    __slots__ = ("body", "created_at")
+
+    def __init__(self, *, body: str, created_at):
+        self.body = body
+        self.created_at = created_at
+
+
 class GithubProvider(GitProvider):
     def __init__(self, pr_url: Optional[str] = None):
         self.repo_obj = None
@@ -275,7 +286,37 @@ class GithubProvider(GitProvider):
         for index in range(len(self.comments) - 1, -1, -1):
             if comment_matches_any_identity(self.comments[index].body, identifiers):
                 return self.comments[index]
+        # PR-Piet patch (#6, 2026-10-03): pr-piet verwijdert de pr-agent
+        # guide-comments bewust (één-post-beleid) en post de review als
+        # FORMELE GitHub-review. Zonder deze tak vindt de incrementele
+        # review (push_commands "/review -i") nooit een anker en draait elke
+        # push een volledige review. Formele reviews dragen dezelfde
+        # identity-marker (pr-piet schrijft hem in de review-body).
+        for review in reversed(self._review_anchors(identifiers)):
+            return review
         return None
+
+    def _review_anchors(self, identifiers):
+        """Formele reviews die als incrementeel anker kunnen dienen.
+
+        PullRequestReview heeft geen `created_at` (wel `submitted_at`), dus
+        we wikkelen ze in een lichte anchor met de velden die het
+        incremental-pad gebruikt (`body`, `created_at`).
+        """
+        try:
+            reviews = list(self.pr.get_reviews())
+        except Exception as exc:  # noqa: BLE001 - anker is optioneel
+            get_logger().debug(f"kon reviews niet ophalen voor incremental anker: {exc}")
+            return []
+        anchors = []
+        for review in reviews:
+            if not comment_matches_any_identity(review.body or "", identifiers):
+                continue
+            submitted = getattr(review, "submitted_at", None) or getattr(review, "created_at", None)
+            anchors.append(
+                _ReviewAnchor(body=review.body or "", created_at=submitted)
+            )
+        return anchors
 
     def _get_complete_files(self):
         if context.exists():

@@ -78,6 +78,20 @@ aparte `/improve`-call.
    - Aanleiding: operator-besluit 2026-10-03 — tier 2 draait niet meer
      automatisch, maar moet op verzoek kunnen (`/review2`).
 
+6. `pr_agent/git_providers/github_provider.py` — **incrementeel anker in
+   formele reviews (2026-10-03)**
+   - `get_previous_review()` scant naast issue-comments nu ook **formele
+     GitHub-reviews** (`pr.get_reviews()`), gewikkeld in een lichte
+     `_ReviewAnchor` (reviews hebben `submitted_at`, geen `created_at`).
+   - Aanleiding: pr-piet verwijdert de pr-agent guide-comments bewust
+     (één-post-beleid) en post de review als formele review; zónder deze
+     tak vond `/review -i` nooit een anker en draaide élke push een
+     volledige review (gelogd als "No previous review found, will review
+     the entire PR").
+   - Samenspel met pr-piet: `submit_review.py` schrijft de identity-marker
+     (`<!-- pr-agent:review:full -->` of `...:incremental -->`) in onze
+     sobere review-body, afgeleid van de verse pr-agent-comment.
+
 ## Gedrag
 
 - **Default (`pr_reviewer.require_suggested_fix = false`, upstream-default):
