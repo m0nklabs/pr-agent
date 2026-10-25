@@ -326,6 +326,17 @@ class PRAgent:
         else:
             action, *args = request
 
+        # PR-Piet patch (2026-10-25): /review=<model> — model per losse review.
+        # De tokenizer houdt het eerste token heel, dus de command-lookup
+        # hieronder faalt met "Unknown command: review=z-ai/glm-5.3". Strip de
+        # waarde: het model wordt door de aanroeper gevalideerd tegen de
+        # open-weights allowlist en via config.model gezet — nooit uit de ruwe
+        # comment-tekst (anders omzeilt een comment de allowlist).
+        if isinstance(action, str) and action.startswith("/") and "=" in action:
+            command_name, _, _value = action[1:].partition("=")
+            if command_name.lower() in command2class:
+                action = f"/{command_name}"
+
         # validate args
         is_valid, arg = CliArgs.validate_user_args(_validation_args(args))
         if not is_valid:
