@@ -535,8 +535,24 @@ class LiteLLMAIHandler(BaseAiHandler):
                 for model in bedrock_overrides
             })
 
-        # Models that require streaming
-        self.streaming_required_models = STREAMING_REQUIRED_MODELS
+        # Models that require streaming. Extendable via
+        # config.additional_streaming_models (env-style string or list) so an
+        # operator can opt a gateway model into streaming without a code
+        # change — e.g. reasoning models whose long generations outlive the
+        # provider's non-streaming wall (OpenRouter ~600 s, measured
+        # 2026-10-27).
+        additional_streaming_models = _coerce_string_list_config(
+            get_settings().config.get("additional_streaming_models", [])
+        )
+        if additional_streaming_models is None:
+            raise ValueError(
+                "Invalid additional_streaming_models in config; expected a list of model names. "
+            )
+        self.streaming_required_models = {
+            str(candidate).strip()
+            for candidate in list(STREAMING_REQUIRED_MODELS) + additional_streaming_models
+            if str(candidate).strip()
+        }
         self.force_streaming_provider = str(
             getattr(get_settings().litellm, "force_streaming_custom_llm_provider", "") or ""
         ).strip().lower()
