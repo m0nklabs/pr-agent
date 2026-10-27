@@ -2514,7 +2514,22 @@ class LiteLLMAIHandler(BaseAiHandler):
                 # enable_claude_extended/adaptive_thinking settings. Skip GPT-5/GPT-6
                 # Astra here so a config-registered model cannot overwrite the
                 # reasoning_effort normalization of its dedicated branch.
-                if not (is_gpt5_model or is_gpt6_astra) and (
+                #
+                # config.reasoning_max_tokens and reasoning_effort are mutually
+                # exclusive downstream: an OpenAI-compatible gateway forwarding both
+                # to OpenRouter is rejected with "Only one of reasoning.effort and
+                # reasoning.max_tokens can be specified" (measured 2026-10-27 on
+                # openrouter/z-ai/glm-5.3-flash). The token budget wins, mirroring
+                # _apply_openrouter_request_controls for true OpenRouter routes.
+                _cfg_reasoning_max_tokens = self._coerce_token_value(
+                    get_settings().config.get("reasoning_max_tokens", 0)
+                )
+                if _cfg_reasoning_max_tokens > 0:
+                    get_logger().info(
+                        f"Skipping reasoning_effort for {model}: config.reasoning_max_tokens="
+                        f"{_cfg_reasoning_max_tokens} takes precedence (mutually exclusive params)."
+                    )
+                elif not (is_gpt5_model or is_gpt6_astra) and (
                     self._grok_reasoning_levels_for(reasoning_model) is not None
                     or not self._is_claude_family_model(reasoning_model)
                     and self._litellm_supports_reasoning(reasoning_model)
