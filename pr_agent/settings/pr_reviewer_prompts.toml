@@ -62,7 +62,7 @@ class SubPR(BaseModel):
 
 class KeyIssuesComponentLink(BaseModel):
     relevant_file: str = Field(description="The full file path of the relevant file")
-    issue_header: str = Field(description="One or two word title for the issue. For example: 'Possible Bug', etc.")
+    issue_header: str = Field(description="The issue title, which MUST start with exactly one classification tag followed by a space: '[verified-bug] ' when you traced the failure path and can state the concrete trigger scenario, '[hypothetical] ' when the risk is plausible but you could not verify it, or '[backlog] ' for a valid improvement that is not merge-blocking. Then a one or two word title. Example: '[verified-bug] Null deref'. A title without a tag is invalid output.")
     issue_content: str = Field(description="A short and concise description of the issue, why it matters, and the specific scenario or input that triggers it. Do not mention line numbers in this field.")
     start_line: int = Field(description="The start line that corresponds to this issue in the relevant file")
     end_line: int = Field(description="The end line that corresponds to this issue in the relevant file")
