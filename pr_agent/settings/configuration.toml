@@ -166,6 +166,7 @@ persistent_finding_state=true # Persist review finding state across complete rev
 inline_key_issues=false
 extra_instructions = ""
 num_max_findings = 3
+max_previous_findings_chars = 8000 # Maximum size of the earlier-findings JSON block in the /review prompt; 0 disables it
 final_update_message = true
 # review labels
 enable_review_labels_security=true

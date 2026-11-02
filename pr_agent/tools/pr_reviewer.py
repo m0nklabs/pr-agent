@@ -41,6 +41,7 @@ from pr_agent.algo.review_finding_state import (
     append_review_state,
     parse_review_state,
     reconcile_review_findings,
+    render_previous_findings,
 )
 from pr_agent.algo.review_merge import merge_review_chunks
 from pr_agent.algo.run_details import get_run_details, init_run_details, record_command_failure, record_model_used
@@ -222,6 +223,7 @@ class PRReviewer:
             "diff": "",  # empty diff for initial calculation
             "num_pr_files": self.git_provider.get_num_of_files(),
             "num_max_findings": get_settings().pr_reviewer.num_max_findings,
+            "previous_findings": self._load_previous_findings_context(),
             "require_score": get_settings().pr_reviewer.require_score_review,
             "require_tests": get_settings().pr_reviewer.require_tests_review,
             "require_estimate_effort_to_review": get_settings().pr_reviewer.require_estimate_effort_to_review,
@@ -480,6 +482,25 @@ class PRReviewer:
             if (partial_review_error is not None and not review_failed
                     and get_settings().config.get("propagate_tool_errors", False)):
                 raise partial_review_error
+
+    def _load_previous_findings_context(self) -> str:
+        """Return the findings stored by earlier reviews as a JSON block for the prompt, or "".
+
+        Ported from upstream qodo-ai/pr-agent. Without this the model never sees prior findings, so a
+        dedupe instruction in the prompt would be unenforceable.
+        """
+        value = get_settings().pr_reviewer.get("max_previous_findings_chars", 8000)
+        try:
+            max_chars = int(value)
+        except (TypeError, ValueError, OverflowError):
+            get_logger().warning(f"Invalid pr_reviewer.max_previous_findings_chars: {value!r}")
+            return ""
+        if max_chars <= 0 or not self._review_finding_state_enabled():
+            return ""
+        parsed = self._load_review_finding_state()
+        if parsed is None or not parsed.valid:
+            return ""
+        return render_previous_findings(parsed.state, max_chars)
 
     def _review_finding_state_enabled(self) -> bool:
         settings = get_settings()
