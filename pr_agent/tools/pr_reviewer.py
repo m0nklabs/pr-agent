@@ -225,6 +225,7 @@ class PRReviewer:
             "num_pr_files": self.git_provider.get_num_of_files(),
             "num_max_findings": get_settings().pr_reviewer.num_max_findings,
             "previous_findings": self._load_previous_findings_context(),
+            "artifact_context": get_settings().get("ARTIFACTS.CONTEXT_TEXT", "") or "",
             "require_score": get_settings().pr_reviewer.require_score_review,
             "require_tests": get_settings().pr_reviewer.require_tests_review,
             "require_estimate_effort_to_review": get_settings().pr_reviewer.require_estimate_effort_to_review,
