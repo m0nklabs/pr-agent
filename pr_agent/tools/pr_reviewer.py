@@ -42,6 +42,7 @@ from pr_agent.algo.review_finding_state import (
     parse_review_state,
     reconcile_review_findings,
     render_previous_findings,
+    newest_pr_piet_findings_state,
 )
 from pr_agent.algo.review_merge import merge_review_chunks
 from pr_agent.algo.run_details import get_run_details, init_run_details, record_command_failure, record_model_used
@@ -483,6 +484,24 @@ class PRReviewer:
                     and get_settings().config.get("propagate_tool_errors", False)):
                 raise partial_review_error
 
+    def _load_pr_piet_findings_state(self):
+        """Return the finding-state embedded in the newest PR-Piet review body, or None.
+
+        PR-Piet runs with publish_output disabled and posts the review itself, so
+        PR-Agent's own finding-state is never written; the wrapper embeds the state in
+        the review body instead (scripts/submit_review.py in m0nklabs/pr-piet).
+        """
+        pr = getattr(self.git_provider, "pr", None)
+        get_reviews = getattr(pr, "get_reviews", None)
+        if not callable(get_reviews):
+            return None
+        try:
+            bodies = [review.body or "" for review in get_reviews()]
+        except Exception as error:  # noqa: BLE001 - state is best-effort
+            get_logger().warning(f"Could not read previous review bodies: {error}")
+            return None
+        return newest_pr_piet_findings_state(bodies)
+
     def _load_previous_findings_context(self) -> str:
         """Return the findings stored by earlier reviews as a JSON block for the prompt, or "".
 
@@ -495,12 +514,15 @@ class PRReviewer:
         except (TypeError, ValueError, OverflowError):
             get_logger().warning(f"Invalid pr_reviewer.max_previous_findings_chars: {value!r}")
             return ""
-        if max_chars <= 0 or not self._review_finding_state_enabled():
+        # No _review_finding_state_enabled() gate here: that gate is satisfied only when
+        # PR-Agent publishes its own comments, and PR-Piet runs with publish_output=false.
+        # The state comes from our own review-body marker instead.
+        if max_chars <= 0:
             return ""
-        parsed = self._load_review_finding_state()
-        if parsed is None or not parsed.valid:
+        state = self._load_pr_piet_findings_state()
+        if state is None:
             return ""
-        return render_previous_findings(parsed.state, max_chars)
+        return render_previous_findings(state, max_chars)
 
     def _review_finding_state_enabled(self) -> bool:
         settings = get_settings()

@@ -302,6 +302,63 @@ def reconcile_review_findings(
     )
 
 
+_PR_PIET_STATE_RE = re.compile(r"<!--\s*pr-piet-findings:v1\s*(\{.*?\})\s*-->", re.DOTALL)
+_PR_PIET_FINDING_SKELETON = "**{header}**\n\n{content}"
+
+
+def parse_pr_piet_findings_state(body: str) -> dict[str, Any] | None:
+    """Parse the finding-state marker this deployment writes into its review body.
+
+    PR-Piet posts the review itself and runs with ``config.publish_output``
+    disabled, so PR-Agent's own finding-state (which is gated on publishing
+    issue comments) is never written. The wrapper therefore embeds the state in
+    the review body; see scripts/submit_review.py in m0nklabs/pr-piet.
+    """
+    match = _PR_PIET_STATE_RE.search(body or "")
+    if not match:
+        return None
+    try:
+        payload = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return None
+    raw = payload.get("findings") if isinstance(payload, dict) else None
+    if not isinstance(raw, list):
+        return None
+    findings = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        state = str(entry.get("state") or "").strip().upper()
+        if state not in ("ACTIVE", "RESOLVED", "DISMISSED"):
+            continue
+        header = str(entry.get("header") or "").strip()
+        content = str(entry.get("content") or "").strip()
+        findings.append({
+            "finding_id": str(entry.get("id") or ""),
+            "state": state,
+            "path": str(entry.get("path") or ""),
+            "line_start": entry.get("start_line"),
+            "line_end": entry.get("end_line"),
+            "body": _PR_PIET_FINDING_SKELETON.format(header=header, content=content),
+            "last_seen": str(entry.get("last_seen") or ""),
+            "resolved_at": str(entry.get("resolved_at") or ""),
+        })
+    return {"findings": findings} if findings else None
+
+
+def newest_pr_piet_findings_state(review_bodies: Iterable[str]) -> dict[str, Any] | None:
+    """Return the state from the newest review body that carries one.
+
+    ``review_bodies`` must be ordered oldest first, matching the provider API.
+    """
+    newest = None
+    for body in review_bodies:
+        parsed = parse_pr_piet_findings_state(body)
+        if parsed is not None:
+            newest = parsed
+    return newest
+
+
 def _previous_finding_entry(finding: Mapping[str, Any]) -> dict[str, Any]:
     match = _FINDING_HEADER_RE.fullmatch(finding["body"])
     entry = {
