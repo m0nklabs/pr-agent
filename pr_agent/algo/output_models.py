@@ -67,6 +67,9 @@ class Review(BaseModel):
     security_concerns: Optional[str] = None
     todo_sections: Optional[Union[List[TodoSection], str]] = None
     can_be_split: Optional[List[SubPR]] = Field(default=None, max_length=3)
+    # True when every changed file was filtered out, so there is nothing to
+    # review. The action then reports a no-op review instead of failing the run.
+    no_reviewable_files: Optional[bool] = None
 
     @field_validator("risk_level", "merge_recommendation", "relevant_tests", mode="before")
     @classmethod

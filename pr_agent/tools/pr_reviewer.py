@@ -889,8 +889,29 @@ class PRReviewer:
             self._load_valid_review_yaml(prediction)
             self.prediction = prediction
         else:
-            get_logger().warning(f"Empty diff for PR: {self.pr_url}")
-            raise ValueError(f"No PR diff fits the /review request for {model}")
+            get_logger().warning(
+                f"No reviewable diff for PR: {self.pr_url} - every changed file was "
+                f"filtered out; reporting a no-op review instead of failing the run"
+            )
+            self.prediction = self._no_reviewable_files_prediction()
+
+    @staticmethod
+    def _no_reviewable_files_prediction() -> str:
+        """Schema-valid review for a PR with nothing to review.
+
+        A PR that only touches filtered files (``.gitignore``, lockfiles,
+        generated code) has an empty diff after pr-agent's own filtering. That is
+        not a model failure, so the run must not go red and the reviewer must not
+        raise: it reports a no-op review carrying ``no_reviewable_files`` so the
+        poster can render an explicit "nothing to review" message.
+        """
+        return (
+            "review:\n"
+            "  key_issues_to_review: []\n"
+            "  no_reviewable_files: true\n"
+            "  security_concerns: |\n"
+            "    No reviewable files in this PR.\n"
+        )
 
     async def _prepare_chunked_prediction(self, model: str,
                                           prepared_diff: PreparedPRDiff | None = None) -> bool:
