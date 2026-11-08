@@ -90,13 +90,33 @@ async def _handle_configured_command(url, command):
     await _handle_request(url, command_args)
 
 
-async def _run_auto_tool(tool_class, pr_url):
-    """Run a direct auto tool while preserving GitHub Action failure semantics."""
+async def _run_auto_tool(tool_class, pr_url, *, fatal=True):
+    """Run a direct auto tool.
+
+    ``fatal=True`` keeps the original semantics: the exception propagates and the
+    GitHub Action fails. The review keeps that behaviour (a model failure must be
+    a red run, never a silent degradation).
+
+    ``fatal=False`` isolates an auxiliary tool. The runner executes every enabled
+    tool inside one step, so an exception from an auxiliary tool used to abort the
+    step before the review ran: measured 2026-11-08 on m0nklabs/lastsync#6, a PR
+    that only touches .gitignore. pr-agent filtered the file out, the resulting
+    empty diff made /describe return no prediction, pr_description raised, and the
+    review never started. An auxiliary failure is now logged and the run continues.
+    """
     try:
         await tool_class(pr_url).run()
     except IncompletePullRequestFilesError:
         publish_incomplete_github_files_comment(pr_url)
         raise
+    except Exception as error:
+        if fatal:
+            raise
+        get_logger().warning(
+            f"{tool_class.__name__} failed and was skipped; continuing with the "
+            f"remaining tools: {error}",
+            exc_info=True,
+        )
 
 async def _run_review_commands(event_payload):
     action = event_payload.get("action")
@@ -327,11 +347,11 @@ async def run_action():
 
                 # invoke by default all three tools
                 if auto_describe is None or is_true(auto_describe):
-                    await _run_auto_tool(PRDescription, pr_url)
+                    await _run_auto_tool(PRDescription, pr_url, fatal=False)
                 if auto_review is None or is_true(auto_review):
                     await _run_auto_tool(PRReviewer, pr_url)
                 if auto_improve is None or is_true(auto_improve):
-                    await _run_auto_tool(PRCodeSuggestions, pr_url)
+                    await _run_auto_tool(PRCodeSuggestions, pr_url, fatal=False)
         else:
             get_logger().info(f"Skipping action: {action}")
 
@@ -455,11 +475,11 @@ async def run_action():
         )
 
         if auto_describe is None or is_true(auto_describe):
-            await _run_auto_tool(PRDescription, pr_url)
+            await _run_auto_tool(PRDescription, pr_url, fatal=False)
         if auto_review is None or is_true(auto_review):
             await _run_auto_tool(PRReviewer, pr_url)
         if auto_improve is None or is_true(auto_improve):
-            await _run_auto_tool(PRCodeSuggestions, pr_url)
+            await _run_auto_tool(PRCodeSuggestions, pr_url, fatal=False)
 
 
 def _inject_ci_conclusion(conclusion):
